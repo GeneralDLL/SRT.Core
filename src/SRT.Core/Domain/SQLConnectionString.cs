@@ -14,10 +14,10 @@ namespace SRT.Core.Domain
         public GeneralConnectionString DefaultConnection { get; set; } = new();
         public GeneralConnectionString DefaultConnection2 { get; set; } = new();
 
-        public GeneralConnectionString GeneralDLL_CacheRedis { get; set; } = new();
-        public GeneralConnectionString GeneralDLL_CacheSQL { get; set; } = new();
-        public GeneralConnectionString GeneralDLL_ErrorSQL { get; set; } = new();
-        public GeneralConnectionString GeneralDLL_RabbitMQ { get; set; } = new();
+        public GeneralConnectionString SRTCore_CacheRedis { get; set; } = new();
+        public GeneralConnectionString SRTCore_CacheSQL { get; set; } = new();
+        public GeneralConnectionString SRTCore_ErrorSQL { get; set; } = new();
+        public GeneralConnectionString SRTCore_RabbitMQ { get; set; } = new();
 
         internal List<GeneralConnectionString> GetAllConnection()
         {
@@ -76,6 +76,25 @@ namespace SRT.Core.Domain
                    $"Connect Timeout=30;Encrypt=False;Trust Server Certificate=False;Application Intent=ReadWrite;Multi Subnet Failover=False;";
         }
 
+        /// <summary>
+        /// TLS when <see cref="IsSslEnabled"/> or <see cref="caPath"/> is non-empty.
+        /// Empty sslEnabled + empty caPath → plaintext.
+        /// </summary>
+        public bool UseTls =>
+            IsSslEnabled || !string.IsNullOrWhiteSpace(caPath);
+
+        /// <summary>Alias of <see cref="UseTls"/> for Redis callers.</summary>
+        public bool UseRedisTls => UseTls;
+
+        /// <summary>
+        /// Effective AMQP port: user-set <see cref="port"/> if present;
+        /// otherwise 5671 when <see cref="UseTls"/>, else 5672.
+        /// </summary>
+        public string GetRabbitMqPort() =>
+            string.IsNullOrWhiteSpace(port)
+                ? (UseTls ? "5671" : "5672")
+                : port.Trim();
+
         public string GetConnectionString_REDIS()
         {
             var sb = new StringBuilder();
@@ -86,7 +105,7 @@ namespace SRT.Core.Domain
             if (!string.IsNullOrWhiteSpace(pass))
                 sb.Append(",password=").Append(pass);
 
-            if (IsSslEnabled)
+            if (UseTls)
             {
                 sb.Append(",ssl=true");
                 sb.Append(",sslHost=").Append(host);
@@ -99,20 +118,18 @@ namespace SRT.Core.Domain
         public string GetSafeSummary()
         {
             return $"type={connectionType}; host={host}; port={port}; user={user}; " +
-                   $"dbName={dbName}; ssl={IsSslEnabled}; vhost={GetVirtualHost()}; caPath={caPath}";
+                   $"dbName={dbName}; ssl={UseTls}; vhost={GetVirtualHost()}; caPath={caPath}";
         }
 
         public string GetConnectionString_RabbitMQ()
         {
-            var scheme = IsSslEnabled ? "amqps" : "amqp";
-            var vhost = Uri.EscapeDataString(GetVirtualHost().TrimStart('/'));
-            if (GetVirtualHost() == "/")
-                vhost = "";
-            else if (GetVirtualHost().StartsWith("/"))
-                vhost = Uri.EscapeDataString(GetVirtualHost());
+            var scheme = UseTls ? "amqps" : "amqp";
+            var effectivePort = GetRabbitMqPort();
+            var vh = GetVirtualHost();
+            var path = vh == "/" ? "" : Uri.EscapeDataString(vh.TrimStart('/'));
 
-            // Prefer ConnectionFactory; this string is mainly for logging (password redacted via GetSafeSummary).
-            return $"{scheme}://{user}:***@{host}:{port}/{GetVirtualHost().TrimStart('/')}";
+            // Prefer ConnectionFactory; this string is mainly for logging (password redacted).
+            return $"{scheme}://{user}:***@{host}:{effectivePort}/{path}";
         }
 
         public string GetConnectionString_Postgre()
@@ -122,15 +139,24 @@ namespace SRT.Core.Domain
         /// Dynamically Return Connection String
         /// </summary>
         /// <returns></returns>
+        public void InheritConnectionTypeFrom(GeneralConnectionString source)
+        {
+            if (string.IsNullOrWhiteSpace(connectionType) && !string.IsNullOrWhiteSpace(source?.connectionType))
+                connectionType = source.connectionType;
+        }
+
         public string GetConnectionString()
         {
-            switch (connectionType.ToLower())
+            switch ((connectionType ?? "").Trim().ToLowerInvariant())
             {
                 case "sql":
+                case "sqlserver":
                     return GetConnectionString_SQL();
                 case "redis":
                     return GetConnectionString_REDIS();
                 case "postgress":
+                case "postgres":
+                case "postgresql":
                     return GetConnectionString_Postgre();
                 case "rabbitmq":
                     return GetConnectionString_RabbitMQ();

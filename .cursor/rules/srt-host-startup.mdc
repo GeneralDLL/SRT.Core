@@ -1,0 +1,25 @@
+---
+description: قرارداد Program و BasicProjectConfig برای ساخت و اجرای هر سرویس وب SRT
+alwaysApply: true
+---
+
+# Host startup
+
+هر سرویس وب SRT مثل `SRT.Test.Redis.Web` راه‌اندازی می‌شود.
+
+`Program.cs` فقط تنظیمات را به `BasicProjectConfig` و `StartAppConfigurations` می‌سپارد:
+
+```csharp
+var dmAppSetting = args.SRT_ConfigController();
+var (builder, config) = StartAppConfigurations.SRT_ConfigController(args, dmAppSetting);
+var app = await builder.SRT_ConfigBuilder(config)
+                       .SRT_ConfigBuilderAndBuildApp(config)
+                       .SRT_ConfigApp(config);
+app.Run();
+```
+
+- `args.SRT_ConfigController()` در `BasicProjectConfig` همان اپ، `MyAppSetting` را می‌سازد.
+- `SRT_ConfigBuilder` فقط سرویس محلی است.
+- `SRT_ConfigBuilderAndBuildApp` در GeneralDLL به `SRT.Core.BaseConfigurations` وصل می‌شود.
+- `SRT_ConfigApp` روی `Task<WebApplication>` و `WebApplication` overload دارد؛ middleware محلی همان‌جا است.
+- `UseAuthorization` و `MapControllers` در Core هستند؛ در هاست تکرار نشوند.

@@ -16,6 +16,8 @@ namespace SRT.Core.SystemEnums
         Referee = 3,
         [Description("کاربر")]
         Client = 4,
-        Internal = 5
+        Internal = 5,
+        [Description("همراه اول")]
+        Mci = 6
     }
 }

@@ -1,3 +1,17 @@
 <Solution>
-  <Project Path="SRT.Core.csproj" />
+  <Folder Name="/SRT.Core/">
+    <Project Path="SRT.Core.csproj" />
+  </Folder>
+  <Folder Name="/SRT.Test.Redis/">
+    <Project Path="../../SRT.Core.TestApplications/src/SRT.Test.Redis/SRT.Test.Redis/SRT.Test.Redis.csproj" />
+    <Project Path="../../SRT.Core.TestApplications/src/SRT.Test.Redis/SRT.Test.Redis.Web/SRT.Test.Redis.Web.csproj" />
+  </Folder>
+  <Folder Name="/SRT.Test.RabbitMQ/">
+    <Project Path="../../SRT.Core.TestApplications/src/SRT.Test.RabbitMQ/SRT.Test.RabbitMQ/SRT.Test.RabbitMQ.csproj" />
+    <Project Path="../../SRT.Core.TestApplications/src/SRT.Test.RabbitMQ/SRT.Test.RabbitMQ.Web/SRT.Test.RabbitMQ.Web.csproj" />
+  </Folder>
+  <Folder Name="/SRT.Test.RabbitMQ.Tls/">
+    <Project Path="../../SRT.Core.TestApplications/src/SRT.Test.RabbitMQ.Tls/SRT.Test.RabbitMQ.Tls/SRT.Test.RabbitMQ.Tls.csproj" />
+    <Project Path="../../SRT.Core.TestApplications/src/SRT.Test.RabbitMQ.Tls/SRT.Test.RabbitMQ.Tls.Web/SRT.Test.RabbitMQ.Tls.Web.csproj" />
+  </Folder>
 </Solution>

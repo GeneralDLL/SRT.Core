@@ -6,7 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 
-namespace SRT.Core.Domain
+namespace SRT.Core.Domain.RequestsDomqins
 {
     public class ResponseData
     {

@@ -1,6 +1,6 @@
 ﻿// Ignore Spelling: SRT
 
-using SRT.Core.Domain;
+using SRT.Core.Domain.RequestsDomqins;
 using System;
 using System.Collections.Generic;
 using System.Linq;
