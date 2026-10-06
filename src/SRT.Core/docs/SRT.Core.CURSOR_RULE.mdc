@@ -1,0 +1,31 @@
+---
+description: SRT.Core — follow package AI_RULES when using or changing host pipeline and contracts
+alwaysApply: false
+globs: "**/SRT.Core/**/*","**/docs/SRT.Core.*"
+---
+
+# SRT.Core (Cursor rule template)
+
+This file is an **install template**. Copy it to the consumer project’s `.cursor/rules/` and keep the package-prefixed filename:
+
+`SRT.Core.CURSOR_RULE.mdc`
+
+## Mandatory
+
+Before using or modifying this package, follow:
+
+- `docs/SRT.Core.AI_RULES.md` (canonical)
+- `docs/SRT.Core.API_REFERENCE.md`
+- `docs/SRT.Core.COOKBOOK.md` for host Program / BasicProjectConfig
+
+## Working rule
+
+Read docs first. Do not invent APIs. If ambiguous, inspect related code and update the docs.
+
+## Hard constraints (summary)
+
+- Thin host `Program.cs`; no host `UseAuthorization` / `MapControllers`
+- Local DI in `BasicProjectConfig.SRT_ConfigBuilder` only
+- Project-reference every plugin `GetRequestedFeatures()` will request
+- Empty `connectionType` is SQL Server, not PostgreSQL
+- Store routing: `IsErrorLogSqlStore` / `IsCacheSqlStore` / Postgres siblings — flags alone are not enough
