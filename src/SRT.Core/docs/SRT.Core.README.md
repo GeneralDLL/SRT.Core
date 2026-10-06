@@ -46,4 +46,5 @@ Before changing or consuming this package:
 3) Follow SRT.Core.COOKBOOK.md for host Program / BasicProjectConfig / StartAppConfigurations
 Rules: read docs first; do not invent APIs; if ambiguous, inspect related code and update these docs.
 Keep Program.cs thin. Do not call UseAuthorization or MapControllers in the host.
+Consumer API controllers inherit SRTBaseControllerSystem and return ResponseData via Response_* helpers.
 ```

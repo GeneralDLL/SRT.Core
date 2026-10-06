@@ -14,4 +14,6 @@ Read docs first. Do not invent APIs. If ambiguous, inspect related code and upda
 
 Keep `Program.cs` thin. Do not call `UseAuthorization` or `MapControllers` in the host. `SrtPluginLoader` is internal.
 
+Consumer API controllers inherit `SRTBaseControllerSystem` (see AI_RULES Controllers).
+
 Keep the `SRT.Core.` filename prefix when copying into consumer projects. This entry file is a pointer only; `AI_RULES.md` is authoritative.

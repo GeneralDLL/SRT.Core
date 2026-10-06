@@ -119,3 +119,31 @@ Implement `IHasSwaggerConfig` only if you ship Swagger. A non-null `SwaggerConfi
 ## 4. New application layout
 
 `src/{Name}/{Name}` (GeneralDLL) and `src/{Name}/{Name}.Web`. Do not reuse a shared `SRT.Test` GeneralDLL for a new app.
+
+---
+
+## 5. API controller (self-contained)
+
+Every JSON API controller in a consumer host inherits `SRTBaseControllerSystem`. Put `[Route]` on the derived type. Local services stay constructor-injected.
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+using SRT.Core.SYS_Controllers;
+
+namespace MyService.Controllers;
+
+[Route("items")]
+public sealed class ItemsController : SRTBaseControllerSystem
+{
+    [HttpGet("{id}")]
+    public IActionResult Get(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return Response_Error_BadRequest("id is required");
+
+        return Response_OK(data: new { id });
+    }
+}
+```
+
+Do not return `Ok(item)` or `NotFound()`. Read the user with `GetUserInfo()` when auth middleware ran. Use `Response_Error_ServiceUnavailable` for a down dependency and `Response_Error_GatewayTimeout` for an upstream wait timeout. Files/streams and `Response_NoContent()` are the envelope exceptions.

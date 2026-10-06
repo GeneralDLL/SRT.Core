@@ -7,7 +7,7 @@ Companion docs: [API_REFERENCE](SRT.Core.API_REFERENCE.md), [COOKBOOK](SRT.Core.
 ## Working rule
 
 1. Read these docs first.
-2. Do not invent APIs that duplicate `AppSetting`, `BaseConfigurations`, `IRepository`, `IUnitOfWork`, `ICacheRepository`, or `IErrorLogger`.
+2. Do not invent APIs that duplicate `AppSetting`, `BaseConfigurations`, `SRTBaseControllerSystem`, `ResponseData`, `IRepository`, `IUnitOfWork`, `ICacheRepository`, or `IErrorLogger`.
 3. If docs are ambiguous or wrong: inspect related code and update these docs.
 4. Do not call internal `SrtPluginLoader`.
 
@@ -28,6 +28,25 @@ MUST NOT:
 - Put Swagger / SQL / Redis / Rabbit / Serilog registration in `Program.cs`.
 - Treat empty `connectionType` as PostgreSQL (it is SQL Server).
 - Assume `UseErrorLogSQL` / `CashWithSQL` register SQL Server when `connectionType` is PostgreSQL.
+
+## Controllers (consumer API hosts)
+
+Applies to **API controllers in apps that consume SRT.Core**. Does **not** apply to `SRTBaseControllerSystem` itself, to MVC view controllers, or to file/stream endpoints.
+
+MUST:
+
+- Inherit `SRT.Core.SYS_Controllers.SRTBaseControllerSystem` (do not inherit `Controller` or `ControllerBase` directly).
+- Return JSON bodies through `Response_OK` / `Response_Error_*` / `Response_GenerateResult` (`ResponseData` envelope). HTTP status must match `ResponseData.status`.
+- Read the authenticated user from `GetUserInfo()` / `IUserInfo` (`HttpContext.Items["UserData"]`).
+- Use `Response_NoContent()` for 204. File and stream results stay unwrapped.
+- Put the route on the derived controller; do not add a shared `[Route]` on the base.
+
+MUST NOT:
+
+- Return raw `Ok(...)`, `NotFound()`, `StatusCode(...)`, or a parallel envelope for JSON.
+- Use `UserInfo`, `GeneralDLL`, or `IGeneralDLLRepository`.
+- Treat `X-Role-Identity` as authorization (`CheckAuthMiddleWareAttribute` is auth).
+- Invent another base controller that duplicates these helpers.
 
 ## Plugins
 

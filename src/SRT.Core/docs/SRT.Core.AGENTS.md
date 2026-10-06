@@ -10,4 +10,6 @@ Before any change that uses or modifies this package, read:
 
 Working rule: read docs first; do not invent APIs; if ambiguous, inspect related code and update the docs.
 
+Consumer API controllers inherit `SRTBaseControllerSystem` (see AI_RULES Controllers).
+
 This file does not replace `AI_RULES.md`. Keep the `SRT.Core.` filename prefix when copying into consumer projects.

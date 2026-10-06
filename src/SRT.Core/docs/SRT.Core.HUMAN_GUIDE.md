@@ -29,6 +29,14 @@ app.Run();
 
 Do not put Swagger, SQL, or Core middleware in `Program.cs`. Do not call `UseAuthorization` or `MapControllers` in the host (`MapControllers` is in Core; `UseAuthorization` is currently commented out there).
 
+## API controllers
+
+JSON API controllers inherit `SRT.Core.SYS_Controllers.SRTBaseControllerSystem` (`[ApiController]`, `ControllerBase`). Helpers return `ResponseData` with a matching HTTP status. Core sets `InvalidModelStateResponseFactory` so automatic 400s use the same envelope.
+
+`CheckAuthMiddleWareAttribute` writes `IUserInfo` to `HttpContext.Items["UserData"]`. Controllers read it with `GetUserInfo()`. `X-Role-Identity` is a device/role header on the base controller, not authorization.
+
+Do not inherit `Controller` / `ControllerBase` directly in consumer APIs. Do not invent a second envelope type.
+
 ## Plugins
 
 Internal `SrtPluginLoader` loads `SRT.Core*.dll` from `AppContext.BaseDirectory`, instantiates public non-abstract `ISRTBasicConfigurations` with a parameterless constructor, then runs them by `Order` then `FeatureName`.

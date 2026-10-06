@@ -1,17 +1,22 @@
 ﻿// Ignore Spelling: SRT
 
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SRT.Core.Authentication;
 using SRT.Core.CustomAttributes;
 using SRT.Core.Domain;
+using SRT.Core.Domain.RequestsDomqins;
 using SRT.Core.ENV;
 using SRT.Core.Interfaces;
 using SRT.Core.Json;
 using SRT.Core.ServiceStatus;
+using SRT.Core.SYS_Controllers;
 using SRT.Core.SystemEnums;
+using System.Linq;
+using System.Net;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
@@ -61,6 +66,24 @@ namespace SRT.Core
             .AddJsonOptions(json =>
             {
                 json.JsonSerializerOptions.Converters.Add(new LocalDateTimeJsonConverter());
+            });
+
+            builder.Services.Configure<ApiBehaviorOptions>(options =>
+            {
+                options.InvalidModelStateResponseFactory = context =>
+                {
+                    var message = string.Join(" ", context.ModelState
+                        .Where(entry => entry.Value is not null && entry.Value.Errors.Count > 0)
+                        .SelectMany(entry => entry.Value!.Errors.Select(error =>
+                            string.IsNullOrWhiteSpace(error.ErrorMessage)
+                                ? error.Exception?.Message
+                                : error.ErrorMessage))
+                        .Where(text => !string.IsNullOrWhiteSpace(text)));
+
+                    return SRTBaseControllerSystem.CreateApiResponse(
+                        HttpStatusCode.BadRequest,
+                        string.IsNullOrWhiteSpace(message) ? "Invalid model state." : message);
+                };
             });
 
             builder.Services.AddEndpointsApiExplorer();

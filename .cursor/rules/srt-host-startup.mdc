@@ -23,3 +23,4 @@ app.Run();
 - `SRT_ConfigBuilderAndBuildApp` در GeneralDLL به `SRT.Core.BaseConfigurations` وصل می‌شود.
 - `SRT_ConfigApp` روی `Task<WebApplication>` و `WebApplication` overload دارد؛ middleware محلی همان‌جا است.
 - `UseAuthorization` و `MapControllers` در Core هستند؛ در هاست تکرار نشوند.
+- کنترلر API از `SRT.Core.SYS_Controllers.SRTBaseControllerSystem` ارث می‌برد؛ پاسخ JSON با `Response_OK` / `Response_Error_*` است.

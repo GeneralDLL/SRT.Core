@@ -32,7 +32,7 @@ public static ILogger SRT_GetLogger(this WebApplication app, string title = "con
 
 ### `SRT_ConfigBuilderAndBuildApp`
 
-Controllers (`ReturnHttpNotAcceptable` default false) + `LocalDateTimeJsonConverter` + `AddEndpointsApiExplorer` → run `lstInjectService` with section `BaseURLtagName` (default `"urlData"`) → load plugins → `ValidateRequestedFeatures` → each plugin `SRT_ConfigBuilder` by Order → `lstBuilderEnvironments` → `[InjectionControllerAttribute]` scan → singleton `AppSetting`, `ISystemENV`, `AppConnectionString`, service status → `Build()` → `UseServiceStatus` (GET `/`) → `HttpOnlyMiddleWareAttribute` → `lstAppEnvironments` → each plugin `SRT_ConfigApp` → **`MapControllers`**.
+Controllers (`ReturnHttpNotAcceptable` default false) + `LocalDateTimeJsonConverter` + `ApiBehaviorOptions.InvalidModelStateResponseFactory` (`ResponseData` 400, not `ValidationProblemDetails`) + `AddEndpointsApiExplorer` → run `lstInjectService` with section `BaseURLtagName` (default `"urlData"`) → load plugins → `ValidateRequestedFeatures` → each plugin `SRT_ConfigBuilder` by Order → `lstBuilderEnvironments` → `[InjectionControllerAttribute]` scan → singleton `AppSetting`, `ISystemENV`, `AppConnectionString`, service status → `Build()` → `UseServiceStatus` (GET `/`) → `HttpOnlyMiddleWareAttribute` → `lstAppEnvironments` → each plugin `SRT_ConfigApp` → **`MapControllers`**.
 
 `UseAuthorization()` is **commented out** in Core. Hosts still must not add it.
 
@@ -113,3 +113,62 @@ Slots: `DefaultConnection`, `DefaultConnection2`, `SRTCore_CacheRedis`, `SRTCore
 `IUnitOfWork`: `SaveChangesAsync`, `ExecuteInTransactionAsync`.
 
 `IRepository<TEntity,TKey>`: GetById, AddOrUpdate (`autoSave: true` saves **all** pending changes), AddOrUpdateRange, DeleteByFilter (immediate `ExecuteDelete` at implementer).
+
+---
+
+## 6. API controllers — `SRTBaseControllerSystem` (`SRT.Core.SYS_Controllers`)
+
+Consumer API controllers inherit this type. It is `[ApiController]`, `abstract`, `ControllerBase`, and `IActionFilter`. There is **no** `[Route]` on the base. Helpers are `[NonAction]`.
+
+```csharp
+[ApiController]
+public abstract class SRTBaseControllerSystem : ControllerBase, IActionFilter
+```
+
+Parameterless constructor. Services resolve **lazily** from `HttpContext.RequestServices` when accessed (not in the constructor).
+
+| Member | Resolve |
+|--------|---------|
+| `Logger` | `ILoggerFactory.CreateLogger(GetType())` (derived type name) |
+| `SRT_Base_AppConfiguration` | `GetRequiredService<IConfiguration>()` |
+| `SRT_Base_AppSetting` | `GetRequiredService<AppSetting>()` |
+| `SRT_Base_AppConnectionString` | `GetRequiredService<AppConnectionString>()` |
+| `SRT_Base_SystemENV` | `GetRequiredService<ISystemENV>()` |
+| `SRT_Base_ErrorLogger` | `GetService<IErrorLogger>()` — **null** when error-log SQL/Postgres is not registered |
+
+Headers (read in `OnActionExecuting`; invalid values log a warning and keep defaults; they are **not** authorization):
+
+- `X-Device-Identity` JSON object → `headerBrowser`, `headerBrowserID`
+- `X-Role-Identity` GUID → `headerUserRoleGUID` (`Guid.Empty` if missing/invalid)
+
+User: `GetUserInfo()` / `dmUser` / `dmAdmin` return `IUserInfo?` from `HttpContext.Items["UserData"]` (same key as `CheckAuthMiddleWareAttribute`). Missing user is `null`, not 500.
+
+Envelope type: `SRT.Core.Domain.RequestsDomqins.ResponseData` (`status`, `data`, `message`, `errorCode`, `redirectURL`). Host JSON formatter is System.Text.Json (`AddJsonOptions`). Do not stringify the whole payload.
+
+```csharp
+public static ObjectResult CreateApiResponse(
+    HttpStatusCode status,
+    string? message = null,
+    object? data = null,
+    string? errorCode = null,
+    string? redirectUrl = null)
+```
+
+HTTP status on the result equals `status`. Helper map:
+
+| Method | HTTP |
+|--------|------|
+| `Response_OK` | 200 |
+| `Response_NoContent` | 204 (no `ResponseData` body) |
+| `Response_Error_BadRequest` / `Response_Error_InputParameterError` / `Response_Error_NotResponseFromChild` | 400 |
+| `Response_Error_Unauthorized` | 401 |
+| `Response_Error_NotFoundInputError` | 404 |
+| `Response_Error_ExistedDataBefore` (aliases `FinishedProcessBefore`, `FoundDataBefore`) | 409 |
+| `Response_Error_TooManyRequests` | 429 |
+| `Response_Error_ControlInternalServerError` | 500 (logs via `IErrorLogger` when registered) |
+| `Response_Error_ServiceUnavailable` | 503 |
+| `Response_Error_GatewayTimeout` | 504 |
+
+`Response_GenerateResult(ResponseData data)` switches on `data.status` for the rows above. Unknown status → `InvalidOperationException`. File/stream results are not wrapped.
+
+Automatic 400 (before the action): `InvalidModelStateResponseFactory` returns `CreateApiResponse(BadRequest, ...)`.

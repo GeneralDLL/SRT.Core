@@ -25,6 +25,7 @@ Read docs first. Do not invent APIs. If ambiguous, inspect related code and upda
 ## Hard constraints (summary)
 
 - Thin host `Program.cs`; no host `UseAuthorization` / `MapControllers`
+- Consumer API controllers inherit `SRTBaseControllerSystem`; JSON bodies use `Response_*` (`ResponseData`)
 - Local DI in `BasicProjectConfig.SRT_ConfigBuilder` only
 - Project-reference every plugin `GetRequestedFeatures()` will request
 - Empty `connectionType` is SQL Server, not PostgreSQL
