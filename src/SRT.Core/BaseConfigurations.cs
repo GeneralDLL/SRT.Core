@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using SRT.Core.Authentication;
 using SRT.Core.CustomAttributes;
@@ -88,13 +89,21 @@ namespace SRT.Core
 
             builder.Services.AddEndpointsApiExplorer();
 
+            var _urlData = new URLData();
+            builder.Configuration.GetSection(configApp.BaseURLtagName).Bind(_urlData);
+            builder.Services.AddSingleton(_urlData);
             if (configApp.lstInjectService != null && configApp.lstInjectService.Count > 0)
             {
-                var _urlData = new URLData();
-                builder.Configuration.GetSection(configApp.BaseURLtagName).Bind(_urlData);
                 foreach (var item in configApp.lstInjectService)
                     item.Invoke(builder.Services, _urlData);
             }
+
+            builder.Services.Configure<ServiceAuthOptions>(builder.Configuration.GetSection(ServiceAuthOptions.SectionName));
+            builder.Services.TryAddSingleton<IServiceTokenClock, SystemServiceTokenClock>();
+            builder.Services.TryAddSingleton<IServiceJwtKeySource, HttpServiceJwtKeySource>();
+            builder.Services.AddSingleton<ServiceJwtKeyCache>();
+            builder.Services.AddHostedService<ServiceJwtKeyWarmup>();
+            builder.Services.TryAddSingleton<ServiceTokenMiddleWare>();
 
             var plugins = SrtPluginLoader.Load(loggerBuilder);
             ValidateRequestedFeatures(configApp, plugins, loggerBuilder);

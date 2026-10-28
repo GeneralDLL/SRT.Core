@@ -143,6 +143,8 @@ Headers (read in `OnActionExecuting`; invalid values log a warning and keep defa
 
 User: `GetUserInfo()` / `dmUser` / `dmAdmin` return `IUserInfo?` from `HttpContext.Items["UserData"]` (same key as `CheckAuthMiddleWareAttribute`). Missing user is `null`, not 500.
 
+`IUserInfo` exposes `isSuperAdmin` and `roleGrants`. Each `UserRoleGrant` has `code` and that role's `accesses`. Missing or null JSON for those members means `false` and an empty list. An old token whose `roles` value is a string array is read as grants with empty `accesses`; a flat `accesses` list is ignored. `CheckAuthMiddleWareAttribute` takes optional `requiredAccess`. After a valid token, a superadmin skips the controller role check and the active-role check. Other users still match `UserRoleType`. When `requiredAccess` is set, the request must send exactly one `X-Active-Role` header. That code is compared with `StringComparer.Ordinal` to `roleGrants`, and the key must be in that role only. Empty, repeated, or comma-joined header values are HTTP 403 `ACTIVE_ROLE_REQUIRED`. An unknown code is `ACTIVE_ROLE_UNKNOWN`. A missing key is `FORBIDDEN_ACCESS`. The accepted code is stored only in `HttpContext.Items["ActiveRole"]` for that request. An invalid token stays HTTP 401. Empty `requiredAccess` does not read the header. `X-Role-Identity` remains a GUID and is not this check.
+
 Envelope type: `SRT.Core.Domain.RequestsDomqins.ResponseData` (`status`, `data`, `message`, `errorCode`, `redirectURL`). Host JSON formatter is System.Text.Json (`AddJsonOptions`). Do not stringify the whole payload.
 
 ```csharp

@@ -24,17 +24,20 @@ namespace SRT.Core.Authentication
     {
         private string? baseToken { get; }
         private bool allowNotAuthenticated { get; }
+        private string? requiredAccess { get; }
         private TypeAuthenticationController ControllerType { get; }
 
         #region Constructors
         public CheckAuthMiddleWareAttribute(
             TypeAuthenticationController authType,
             bool allowNotAuthenticated = false,
-            string? baseToken = null)
+            string? baseToken = null,
+            string? requiredAccess = null)
         {
             ControllerType = authType;
             this.allowNotAuthenticated = allowNotAuthenticated;
             this.baseToken = baseToken;
+            this.requiredAccess = requiredAccess;
         }
         #endregion
 
@@ -56,7 +59,10 @@ namespace SRT.Core.Authentication
                 }
 
                 // اجبار تغییر رمز: فقط GetInfo / ChangePassword / logout مجاز است
-                if (context.Result is null && authService.IsForceChangePassword(context))
+                if (context.Result is not null)
+                    return;
+
+                if (authService.IsForceChangePassword(context))
                 {
                     context.Result = new ObjectResult(new ResponseData
                     {
@@ -100,7 +106,8 @@ namespace SRT.Core.Authentication
                     return;
 
                 case TypeAuthenticationController.Internal:
-                    HandleInternalAuth(token);
+                    var serviceTokens = context.HttpContext.RequestServices.GetRequiredService<ServiceTokenMiddleWare>();
+                    await serviceTokens.InvokeAsync(context, token, baseToken);
                     return;
 
                 default:
@@ -134,14 +141,6 @@ namespace SRT.Core.Authentication
             }
         }
 
-        private void HandleInternalAuth(string? token)
-        {
-            var expected = ISecuritySystem.ResolveInternalToken(baseToken);
-            if (token != expected)
-            {
-                throw new Exception("Invalid internal token");
-            }
-        }
         #endregion
 
         #region Token Creation
@@ -173,7 +172,10 @@ namespace SRT.Core.Authentication
             if (r.SRT_String_IsNullOrEmpty())
                 return;
 
-            if (!allowNotAuthenticated)
+            if (string.Equals(r, ForbiddenAccessMessage, StringComparison.Ordinal)
+                || string.Equals(r, ActiveRoleRequiredMessage, StringComparison.Ordinal)
+                || string.Equals(r, ActiveRoleUnknownMessage, StringComparison.Ordinal)
+                || !allowNotAuthenticated)
                 throw new Exception(r);
         }
         private string? SetUserDataMain(ActionExecutingContext context, BaseHttpClientService apiResult)
@@ -193,11 +195,31 @@ namespace SRT.Core.Authentication
             if (dmUser is null)
                 return "Invalid client data response";
 
-            // Role-specific controllers must match; `None` accepts any authenticated role.
+            // Superadmin skips role and dashboard checks. Token validation already succeeded.
             if (!allowNotAuthenticated
+                && !dmUser.isSuperAdmin
                 && ControllerType != TypeAuthenticationController.None
                 && !RoleMatchesController(dmUser.userRole, ControllerType))
                 return InvalidRoleDataMessage;
+
+            if (!dmUser.isSuperAdmin && !string.IsNullOrWhiteSpace(requiredAccess))
+            {
+                var decision = DashboardAccess.Decide(
+                    dmUser,
+                    requiredAccess,
+                    ReadActiveRoleHeader(context.HttpContext.Request),
+                    out var activeRole);
+                if (decision != DashboardAccessDecision.Allowed)
+                    return decision switch
+                    {
+                        DashboardAccessDecision.ActiveRoleRequired => ActiveRoleRequiredMessage,
+                        DashboardAccessDecision.ActiveRoleUnknown => ActiveRoleUnknownMessage,
+                        _ => ForbiddenAccessMessage
+                    };
+
+                if (activeRole is not null)
+                    context.HttpContext.Items[DashboardAccess.ActiveRoleItemKey] = activeRole;
+            }
 
             context.HttpContext.Items["UserData"] = dmUser;
 
@@ -222,9 +244,52 @@ namespace SRT.Core.Authentication
 
         #region Exception Handler
         private const string InvalidRoleDataMessage = "Invalid Role Data";
+        private const string ForbiddenAccessMessage = "Missing dashboard access";
+        private const string ActiveRoleRequiredMessage = "Active role required";
+        private const string ActiveRoleUnknownMessage = "Active role unknown";
+
+        private static IReadOnlyList<string> ReadActiveRoleHeader(HttpRequest request)
+        {
+            if (!request.Headers.TryGetValue(DashboardAccess.HeaderName, out var values) || values.Count == 0)
+                return [];
+
+            var headers = new List<string>(values.Count);
+            foreach (var value in values)
+                headers.Add(value ?? string.Empty);
+            return headers;
+        }
+
+        private static ObjectResult Forbidden(string errorCode, string message)
+            => new(new ResponseData
+            {
+                status = HttpStatusCode.Forbidden,
+                message = message,
+                errorCode = errorCode
+            })
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+            };
 
         private static async Task HandleExceptionAsync(ActionExecutingContext context, Exception ex)
         {
+            if (string.Equals(ex.Message, ActiveRoleRequiredMessage, StringComparison.Ordinal))
+            {
+                context.Result = Forbidden(DashboardAccess.ActiveRoleRequiredCode, "نقش فعال را در هدر X-Active-Role بفرستید.");
+                return;
+            }
+
+            if (string.Equals(ex.Message, ActiveRoleUnknownMessage, StringComparison.Ordinal))
+            {
+                context.Result = Forbidden(DashboardAccess.ActiveRoleUnknownCode, "نقش فعال برای این کاربر تعریف نشده است.");
+                return;
+            }
+
+            if (string.Equals(ex.Message, ForbiddenAccessMessage, StringComparison.Ordinal))
+            {
+                context.Result = Forbidden(DashboardAccess.ForbiddenCode, "دسترسی به این عملیات برای شما مجاز نیست.");
+                return;
+            }
+
             if (string.Equals(ex.Message, InvalidRoleDataMessage, StringComparison.Ordinal))
             {
                 context.Result = new ObjectResult(new ResponseData
