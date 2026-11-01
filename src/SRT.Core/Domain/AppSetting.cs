@@ -39,6 +39,7 @@ namespace SRT.Core.Domain
             lstInjectService = _base.lstInjectService;
             lstInjection_WithInjectionAttribute = _base.lstInjection_WithInjectionAttribute;
             BaseURLtagName = _base.BaseURLtagName;
+            StartupReport = _base.StartupReport;
         }
         #endregion
 
@@ -68,6 +69,13 @@ namespace SRT.Core.Domain
         public string ServiceName { get; set; } = AppDomain.CurrentDomain.FriendlyName;
 
         public string BaseURLtagName { get; set; } = "urlData";
+
+        /// <summary>
+        /// Filled by SRT.Core and every plugin during startup and written as one log line
+        /// (category <c>SRT.Startup</c>) when the app has started or failed.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public SRT.Core.Domain.Diagnostics.SRTStartupReport StartupReport { get; set; } = new();
 
         public AppConnectionString ConnectionStrings { get; set; }
         public SystemENV CoreSystemENV { get; set; }

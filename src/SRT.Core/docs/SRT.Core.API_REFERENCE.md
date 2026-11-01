@@ -27,7 +27,7 @@ public static ILogger SRT_GetLogger(this WebApplication app, string title = "con
 3. `config.CoreSystemENV`
 4. Bind `ConnectionDB` → `AppConnectionString`; empty Error/Cache SQL `connectionType` inherits from `DefaultConnection`
 5. Bind `Service:Id` / `ServiceId`, `Service:Name` / `ServiceName`
-6. `AddApiVersioning` (`ReportApiVersions = true`)
+6. `AddApiVersioning` (`ReportApiVersions = true`, default `1.0`, `AssumeDefaultVersionWhenUnspecified = true`) with `.AddMvc().AddApiExplorer()`
 7. `config.lstInjectService.Add(AddAuthentication)`
 
 ### `SRT_ConfigBuilderAndBuildApp`
@@ -41,6 +41,16 @@ Controllers (`ReturnHttpNotAcceptable` default false) + `LocalDateTimeJsonConver
 Validation throws `InvalidOperationException` if a requested feature has no plugin, or required `host` is empty (`AllowCacheSqlFallback` skips cache SQL/Postgres host check).
 
 ---
+
+### Startup summary — `SRTStartupReport` (`SRT.Core.Domain.Diagnostics`)
+
+Startup writes ONE log record, category `SRT.Startup`, event id 1000. Success is `Warning` (passes a Production `Default: Warning` filter), a FAILED part or a startup exception is `Error` with the exception attached. It goes through `ILogger`, so Serilog and OpenTelemetry both get it. Every part is also an attribute: `srt.startup.<section>.status` / `.detail`, plus `srt.startup.outcome|service|environment|elapsed_ms|urls`.
+
+- `configApp.StartupReport` is the instance. It is also registered in DI as a singleton.
+- `Set(section, status, detail)` adds or replaces a part. Helpers: `Ok`, `Off`, `Failed`, `Info`, `Append`. Status values: `OK`, `OFF`, `FAILED`, `SKIPPED`, `INFO`.
+- SRT.Core fills `plugins` and `grpc`. Plugins fill `sql.<DbContext>` (target, migrations, seed, maintenance, identity gap), `redis` (with ping), `rabbitmq` (with a connect probe, not fatal), `swagger`, `telemetry`, `serilog`. A service can add its own part from `SRT_ConfigBuilder` / `SRT_ConfigApp`.
+- Written once: on `ApplicationStarted` (with the real URLs), or at the first plugin exception. Never put a password or a raw connection string in a detail.
+- The old per-step `LogWarning("... - OK")` lines are now `Debug`.
 
 ## 2. Plugin contract
 
@@ -92,6 +102,9 @@ Slots: `DefaultConnection`, `DefaultConnection2`, `SRTCore_CacheRedis`, `SRTCore
 | `UseTls` | `IsSslEnabled \|\| caPath` non-empty |
 | `UseRedisTls` | Alias of `UseTls` |
 | `GetVirtualHost()` | Empty → `"/"` |
+| `pattern` | Per-service name prefix for Redis keys (`SRTCore_CacheRedis`) and RabbitMQ queue/exchange names (`SRTCore_RabbitMQ`); empty = no prefix |
+| `NormalizedPattern` / `NormalizePattern(value)` | Trim; append `:` unless it ends with `:`, `_`, `-` or `.`; empty stays empty |
+| `ApplyPattern(name)` / `ApplyPattern(value, name)` | Prepends the normalized pattern unless `name` is empty or already starts with it |
 | `GetRabbitMqPort()` | User `port` if set; else `5671` if `UseTls`, else `5672` |
 | `GetConnectionString_SQL()` | `Encrypt=False`; `Trust Server Certificate=False`; timeout 30 |
 | `GetConnectionString_REDIS()` | Default port 6379; `ssl=true,sslHost=host` when `UseTls` |

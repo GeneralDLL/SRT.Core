@@ -53,6 +53,41 @@ namespace SRT.Core.Domain
         /// <summary>RabbitMQ virtual host (e.g. app). Empty = /</summary>
         public string virtualHost { get; set; } = "";
 
+        /// <summary>
+        /// Per-service name prefix for Redis keys and RabbitMQ queue/exchange names
+        /// (for example <c>shop</c> gives <c>shop:...</c>). Empty = names are used as given.
+        /// </summary>
+        public string pattern { get; set; } = "";
+
+        /// <summary>
+        /// <see cref="pattern"/> trimmed; <c>:</c> is added unless it already ends with
+        /// <c>:</c>, <c>_</c>, <c>-</c> or <c>.</c>. Empty when no pattern is set.
+        /// </summary>
+        public string NormalizedPattern => NormalizePattern(pattern);
+
+        /// <summary>Puts <see cref="NormalizedPattern"/> in front of <paramref name="name"/>, never twice.</summary>
+        public string ApplyPattern(string name) => ApplyPattern(pattern, name);
+
+        public static string NormalizePattern(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return "";
+            value = value.Trim();
+            if (value.EndsWith(':') || value.EndsWith('_') || value.EndsWith('-') || value.EndsWith('.'))
+                return value;
+            return value + ":";
+        }
+
+        public static string ApplyPattern(string? value, string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return name ?? "";
+            var prefix = NormalizePattern(value);
+            if (prefix.Length == 0 || name.StartsWith(prefix, StringComparison.Ordinal))
+                return name;
+            return prefix + name;
+        }
+
         public bool IsSslEnabled =>
             string.Equals(sslEnabled, "true", StringComparison.OrdinalIgnoreCase)
             || string.Equals(sslEnabled, "1", StringComparison.OrdinalIgnoreCase);
@@ -118,7 +153,7 @@ namespace SRT.Core.Domain
         public string GetSafeSummary()
         {
             return $"type={connectionType}; host={host}; port={port}; user={user}; " +
-                   $"dbName={dbName}; ssl={UseTls}; vhost={GetVirtualHost()}; caPath={caPath}";
+                   $"dbName={dbName}; ssl={UseTls}; vhost={GetVirtualHost()}; caPath={caPath}; pattern={pattern}";
         }
 
         public string GetConnectionString_RabbitMQ()

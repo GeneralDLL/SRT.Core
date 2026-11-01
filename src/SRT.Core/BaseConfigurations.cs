@@ -1,5 +1,6 @@
 ﻿// Ignore Spelling: SRT
 
+using Asp.Versioning;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using SRT.Core.Authentication;
 using SRT.Core.CustomAttributes;
 using SRT.Core.Domain;
+using SRT.Core.Domain.Diagnostics;
 using SRT.Core.Domain.RequestsDomqins;
 using SRT.Core.ENV;
 using SRT.Core.Interfaces;
@@ -35,6 +37,9 @@ namespace SRT.Core
             Console.WriteLine("");
 
             string environment = SystemENV.FixEnvironmentName(args.Length == 0 ? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Development" : args[0]);
+
+            Console.Title = config.ServiceName + "-" + environment;
+
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = environment });
 
             config.CoreSystemENV = new SystemENV(builder.Environment);
@@ -43,10 +48,15 @@ namespace SRT.Core
             config.ConnectionStrings = dmConnectionString;
             BindServiceIdentity(builder.Configuration, config);
 
+            // Controllers without [ApiVersion] stay on the default version, so callers that send no api-version keep working.
             builder.Services.AddApiVersioning(options =>
             {
                 options.ReportApiVersions = true;
-            });
+                options.DefaultApiVersion = new ApiVersion(1, 0);
+                options.AssumeDefaultVersionWhenUnspecified = true;
+            })
+            .AddMvc()
+            .AddApiExplorer();
 
             config.lstInjectService.Add(AddAuthentication);
 
@@ -56,7 +66,9 @@ namespace SRT.Core
         public static async Task<WebApplication> SRT_ConfigBuilderAndBuildApp(WebApplicationBuilder builder, AppSetting configApp)
         {
             var loggerBuilder = builder.SRT_GetLogger();
-            loggerBuilder.LogWarning("Environment -> {Environment}", configApp.CoreSystemENV.environment);
+            var report = configApp.StartupReport;
+            var environmentName = configApp.CoreSystemENV.environment.ToString();
+            loggerBuilder.LogDebug("Environment -> {Environment}", environmentName);
 
             builder.Services.AddControllers(option =>
             {
@@ -105,14 +117,37 @@ namespace SRT.Core
             builder.Services.AddHostedService<ServiceJwtKeyWarmup>();
             builder.Services.TryAddSingleton<ServiceTokenMiddleWare>();
 
-            var plugins = SrtPluginLoader.Load(loggerBuilder);
-            ValidateRequestedFeatures(configApp, plugins, loggerBuilder);
+            List<ISRTBasicConfigurations> plugins;
+            try
+            {
+                plugins = SrtPluginLoader.Load(loggerBuilder);
+                report.Info("plugins", string.Join(", ", plugins.Select(p => p.FeatureName)));
+                ValidateRequestedFeatures(configApp, plugins, loggerBuilder);
+            }
+            catch (Exception ex)
+            {
+                report.Failed("plugins", ex.Message);
+                report.Write(builder.SRT_GetLogger(SRTStartupReport.LoggerCategory), configApp.ServiceName, environmentName, failure: ex);
+                throw;
+            }
 
             foreach (var plugin in plugins)
             {
-                builder = await plugin.SRT_ConfigBuilder(builder, configApp);
-                loggerBuilder.LogWarning("Builder - External Config {Module} ({Feature}) - OK", plugin.GetType().Name, plugin.FeatureName);
+                try
+                {
+                    builder = await plugin.SRT_ConfigBuilder(builder, configApp);
+                }
+                catch (Exception ex)
+                {
+                    report.Failed(plugin.FeatureName.ToLowerInvariant(), "builder config failed: " + ex.Message);
+                    report.Write(builder.SRT_GetLogger(SRTStartupReport.LoggerCategory), configApp.ServiceName, environmentName, failure: ex);
+                    throw;
+                }
+
+                loggerBuilder.LogDebug("Builder - External Config {Module} ({Feature}) - OK", plugin.GetType().Name, plugin.FeatureName);
             }
+
+            report.Set("grpc", SRTStartupReport.Status.Off, IsGrpcLoaded() ? "Grpc.AspNetCore.Server is loaded but not reported by any SRT plugin" : "not used");
 
             configApp.lstBuilderEnvironments.ForEach(q => q.Invoke(builder, configApp.CoreSystemENV.environment));
 
@@ -122,7 +157,8 @@ namespace SRT.Core
             builder.Services.AddSingleton<ISystemENV>(configApp.CoreSystemENV);
             builder.Services.AddSingleton(configApp.ConnectionStrings);
             builder.Services.AddServiceStatus();
-            loggerBuilder.LogWarning("Builder - Add Injection SQLConnection | CoreSystemENV - OK");
+            builder.Services.AddSingleton(report);
+            loggerBuilder.LogDebug("Builder - Add Injection SQLConnection | CoreSystemENV - OK");
 
             var app = builder.Build();
 
@@ -133,11 +169,40 @@ namespace SRT.Core
 
             configApp.lstAppEnvironments.ForEach(q => q.Invoke(app, configApp.CoreSystemENV.environment));
 
+            var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(SRTStartupReport.LoggerCategory);
             foreach (var plugin in plugins)
             {
-                app = await plugin.SRT_ConfigApp(app, configApp);
-                loggerApp.LogWarning("APP - External Config {Module} ({Feature}) - OK", plugin.GetType().Name, plugin.FeatureName);
+                try
+                {
+                    app = await plugin.SRT_ConfigApp(app, configApp);
+                }
+                catch (Exception ex)
+                {
+                    var section = plugin.FeatureName.ToLowerInvariant();
+                    if (!report.Entries.Any(e => e.Status == SRTStartupReport.Status.Failed))
+                        report.Failed(section, "app config failed: " + ex.Message);
+                    report.Write(startupLogger, configApp.ServiceName, environmentName, failure: ex);
+                    throw;
+                }
+
+                loggerApp.LogDebug("APP - External Config {Module} ({Feature}) - OK", plugin.GetType().Name, plugin.FeatureName);
             }
+
+            // One summary line per start. ApplicationStarted fires after Kestrel binds, so the real URLs are known.
+            var lifetimeApp = app;
+            app.Lifetime.ApplicationStarted.Register(() =>
+            {
+                try
+                {
+                    // Replaces the Microsoft.Hosting.Lifetime lines (listening on / environment / content root), now filtered to Warning.
+                    report.Info("host", $"contentRoot={lifetimeApp.Environment.ContentRootPath} pid={Environment.ProcessId}");
+                    report.Write(startupLogger, configApp.ServiceName, environmentName, string.Join(", ", lifetimeApp.Urls));
+                }
+                catch
+                {
+                    // The summary must never stop the service.
+                }
+            });
 
             //app.UseAuthorization();
             app.MapControllers();
@@ -203,7 +268,7 @@ namespace SRT.Core
                 return null;
             });
 
-            logger.LogWarning("Plugin validation OK. Discovered: {Plugins}", string.Join(", ", discovered));
+            logger.LogDebug("Plugin validation OK. Discovered: {Plugins}", string.Join(", ", discovered));
         }
 
         private static void ThrowIfIncomplete(AppSetting configApp, string feature, Func<string?> reason)
@@ -214,6 +279,9 @@ namespace SRT.Core
             if (!string.IsNullOrWhiteSpace(message))
                 throw new InvalidOperationException($"SRT feature '{feature}' is enabled with incomplete settings: {message}");
         }
+
+        private static bool IsGrpcLoaded() =>
+            AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name == "Grpc.AspNetCore.Server");
 
         internal static bool HasHost(GeneralConnectionString? connection) =>
             connection != null && !string.IsNullOrWhiteSpace(connection.host);
@@ -277,14 +345,12 @@ namespace SRT.Core
             sqlConnection.SRTCore_ErrorSQL.InheritConnectionTypeFrom(sqlConnection.DefaultConnection);
             sqlConnection.SRTCore_CacheSQL.InheritConnectionTypeFrom(sqlConnection.DefaultConnection);
 
-            Console.WriteLine("\n\n******************************* Connection Strings ****************************");
             LogConnection(builder, sqlConnection.DefaultConnection);
             LogConnection(builder, sqlConnection.DefaultConnection2);
             LogConnection(builder, sqlConnection.SRTCore_ErrorSQL);
             LogConnection(builder, sqlConnection.SRTCore_RabbitMQ);
             LogConnection(builder, sqlConnection.SRTCore_CacheSQL);
             LogConnection(builder, sqlConnection.SRTCore_CacheRedis);
-            Console.WriteLine("*******************************************************************************\n\n");
 
             return sqlConnection;
         }
@@ -307,7 +373,7 @@ namespace SRT.Core
             if (connection == null) return;
             var name = instanceName.Contains('.') ? instanceName.Split('.')[1] : instanceName;
             var logger = builder.SRT_GetLogger(name);
-            logger.LogWarning("Connection {Name}: {Summary}", name, connection.GetSafeSummary());
+            logger.LogDebug("Connection {Name}: {Summary}", name, connection.GetSafeSummary());
         }
 
         public static ILogger SRT_GetLogger(this WebApplicationBuilder builder, string title = "configure Application")
