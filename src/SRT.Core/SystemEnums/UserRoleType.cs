@@ -6,6 +6,7 @@ namespace SRT.Core.SystemEnums
         RefereeAdmin = 2,
         Referee = 3,
         Client = 4,
-        Mci = 5
+        Mci = 5,
+        DevOps = 6
     }
 }

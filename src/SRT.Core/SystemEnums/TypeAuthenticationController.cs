@@ -18,6 +18,8 @@ namespace SRT.Core.SystemEnums
         Client = 4,
         Internal = 5,
         [Description("همراه اول")]
-        Mci = 6
+        Mci = 6,
+        [Description("دواپس")]
+        DevOps = 7
     }
 }

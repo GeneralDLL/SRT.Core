@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.DependencyInjection;
+using SRT.Core.Domain.Diagnostics;
 using SRT.Core.Domain.DomainInterfaces;
 using SRT.Core.Domain.RequestsDomqins;
 using SRT.Core.Domain.RequestsDomqins.HttpClientServices;
@@ -102,6 +103,7 @@ namespace SRT.Core.Authentication
                 case TypeAuthenticationController.Referee:
                 case TypeAuthenticationController.Client:
                 case TypeAuthenticationController.Mci:
+                case TypeAuthenticationController.DevOps:
                     await HandleUserAuth(context, authService, token);
                     return;
 
@@ -237,6 +239,7 @@ namespace SRT.Core.Authentication
                 TypeAuthenticationController.Referee => userRole == UserRoleType.Referee,
                 TypeAuthenticationController.Client => userRole == UserRoleType.Client,
                 TypeAuthenticationController.Mci => userRole == UserRoleType.Mci,
+                TypeAuthenticationController.DevOps => userRole == UserRoleType.DevOps,
                 _ => false,
             };
         }
@@ -305,7 +308,10 @@ namespace SRT.Core.Authentication
             }
 
             var errorRepo = context.HttpContext.RequestServices.GetService<IErrorLogger>()!;
-            var errorId = await errorRepo.Save_Error_ToDB(ex);
+            var (_, errorId) = await errorRepo.Save_Error_WithEnvelope(
+                ex,
+                HttpDiagnosticEnvelope.Create(context.HttpContext, StatusCodes.Status401Unauthorized),
+                persistToDb: true);
 
             // 🟢 اضافه کردن کوکی در صورت عدم احراز هویت
             context.HttpContext.Response.Cookies.Append(

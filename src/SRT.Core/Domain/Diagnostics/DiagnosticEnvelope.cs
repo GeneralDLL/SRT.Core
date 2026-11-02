@@ -35,6 +35,19 @@ namespace SRT.Core.Domain.Diagnostics
         public string? DlqName { get; set; }
         public string? PendingMigrations { get; set; }
         public string? DbContext { get; set; }
+        public string? HttpMethod { get; set; }
+        public string? Path { get; set; }
+        public string? QueryString { get; set; }
+        public string? RouteTemplate { get; set; }
+        public int? StatusCode { get; set; }
+        public int? UserId { get; set; }
+        public string? UserType { get; set; }
+        public string? ActiveRole { get; set; }
+        public string? ClientIp { get; set; }
+        public string? UserAgent { get; set; }
+        public string? Referer { get; set; }
+        public string? FlowTraceId { get; set; }
+        public Dictionary<string, string>? Headers { get; set; }
     }
 
     public class DiagnosticEnvelope

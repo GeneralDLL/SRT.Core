@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SRT.Core.Diagnostics;
 using SRT.Core.Domain;
+using SRT.Core.Domain.Diagnostics;
 using SRT.Core.Domain.DomainInterfaces;
 using SRT.Core.Domain.RequestsDomqins;
 using SRT.Core.ENV;
@@ -139,7 +140,7 @@ namespace SRT.Core.SYS_Controllers
             Exception? error = null,
             string? url = null)
         {
-            var code = error is null ? "" : await SaveLogError(error);
+            var code = error is null ? "" : await SaveLogError(error, HttpStatusCode.BadRequest);
             return CreateResponse(HttpStatusCode.BadRequest, message, data, errorCode: code, redirectUrl: url);
         }
 
@@ -191,7 +192,7 @@ namespace SRT.Core.SYS_Controllers
         }
 
         [NonAction]
-        protected async Task<string> SaveLogError(Exception ex)
+        protected async Task<string> SaveLogError(Exception ex, HttpStatusCode status = HttpStatusCode.InternalServerError)
         {
             var errorLogger = SRT_Base_ErrorLogger;
             if (errorLogger is null)
@@ -200,7 +201,7 @@ namespace SRT.Core.SYS_Controllers
                 return "Error Log => IErrorLogger not registered";
             }
 
-            var id = await errorLogger.Save_Error_ToDB(ex);
+            var (_, id) = await errorLogger.Save_Error_WithEnvelope(ex, HttpDiagnosticEnvelope.Create(HttpContext, (int)status), persistToDb: true);
             var text = "Error Log => ID: " + id;
             Logger.LogError(ex, "{ErrorLog}", text);
             return text;

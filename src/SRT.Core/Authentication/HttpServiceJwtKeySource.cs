@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net.Http.Headers;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using SRT.Core.Domain;
@@ -12,12 +13,14 @@ public sealed class HttpServiceJwtKeySource : IServiceJwtKeySource
 {
     private readonly URLData _urls;
     private readonly AppSetting _app;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<HttpServiceJwtKeySource> _logger;
 
-    public HttpServiceJwtKeySource(URLData urls, AppSetting app, ILogger<HttpServiceJwtKeySource> logger)
+    public HttpServiceJwtKeySource(URLData urls, AppSetting app, IConfiguration configuration, ILogger<HttpServiceJwtKeySource> logger)
     {
         _urls = urls;
         _app = app;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -33,7 +36,7 @@ public sealed class HttpServiceJwtKeySource : IServiceJwtKeySource
         using var request = new HttpRequestMessage(HttpMethod.Get, "internal/service-auth/Keys");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", ISecuritySystem.ResolveInternalToken(null));
         request.Headers.TryAddWithoutValidation("X-Service-Id", _app.ServiceId.ToString(CultureInfo.InvariantCulture));
-        request.Headers.TryAddWithoutValidation("X-Service-Secret", Environment.GetEnvironmentVariable("AUTH_SERVICE_SECRET") ?? string.Empty);
+        request.Headers.TryAddWithoutValidation("X-Service-Secret", ISecuritySystem.ResolveServiceSecret(_configuration, _app.ServiceId));
 
         try
         {

@@ -119,7 +119,11 @@ Slots: `DefaultConnection`, `DefaultConnection2`, `SRTCore_CacheRedis`, `SRTCore
 
 `ICacheRepository` (`SRT.Core.Interfaces.Cache`): AddNewData, AddPersistentData, GetData, RemoveData, ClearCategory, counters, rate-limit, backoff. `CacheServiceKeys.Sql = "sql"`. `ICacheSqlPersistence.IsAvailable`.
 
-`IErrorLogger` (`SRT.Core.Diagnostics`): Save_Error_ToDB, Save_Error_WithEnvelope, Save_Log, GetErrorString, SearchByFilterAsync, DeleteByFilterAsync. Filter Take default 50.
+`IErrorLogger` (`SRT.Core.Diagnostics`): Save_Error_ToDB, Save_Error_WithEnvelope, Save_Log, GetErrorString, SearchByFilterAsync, DeleteByFilterAsync. Filter Take default 50. Viewer methods SearchPageAsync, GetByIdAsync, GetByCorrelationAsync, FacetsAsync, StatsAsync, ExportCsvAsync, PurgeOlderThanAsync have a default implementation that throws `NotSupportedException`; the SQL Server store overrides them.
+
+`HttpDiagnosticEnvelope.Create(HttpContext, statusCode)` (`SRT.Core.Domain.Diagnostics`) builds the Http envelope that `SaveLogError` and `CheckAuthMiddleWareAttribute` store. Detail holds method, path, query string, route, status, user id, role, active role, client IP, user agent, referer, flow trace id and request headers. `Authorization`, `Cookie`, `Proxy-Authorization` and `X-Api-Key` are dropped. The request body is never stored.
+
+`TypeAuthenticationController.DevOps` matches `UserRoleType.DevOps`.
 
 `IDataBase`: `Provider` (`SqlServer` \| `PostgreSql`), `BaseConfiguration`, `InsertBaseData`, `ApplyStartupDataMaintenanceAsync`.
 
