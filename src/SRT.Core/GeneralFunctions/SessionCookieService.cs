@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SRT.Core.ENV;
@@ -27,15 +27,19 @@ namespace SRT.Core.GeneralFunctions
         /// <summary>Legacy JS-readable cookie — cleared on write/clear during migration.</summary>
         public const string LegacyTokenCookieName = "TOKEN";
         public const string LegacyRoleCookieName = "ROLE_ID";
+        public const string RememberCookieName = "AuthRemember";
 
         public static readonly TimeSpan SessionMaxAge = TimeSpan.FromDays(DefaultSessionLifetimeDays);
         public static readonly TimeSpan RegistrationTicketMaxAge = TimeSpan.FromHours(DefaultRegistrationTicketHours);
 
         public static void SetSession(HttpContext context, string sessionId)
+            => SetSession(context, sessionId, context.Request.Cookies[RememberCookieName] != "0");
+
+        public static void SetSession(HttpContext context, string sessionId, bool persistent)
         {
             // Expire leftover parent-domain AuthToken first so the browser only keeps host-only.
             ExpireLeftoverParentCookie(context, SessionCookieName, httpOnly: true);
-            AppendCookie(context, SessionCookieName, sessionId, httpOnly: true, SessionLifetime(context));
+            AppendCookie(context, SessionCookieName, sessionId, httpOnly: true, SessionLifetime(context), persistent: persistent);
             // Stop issuing non-HttpOnly TOKEN; clear residue so XSS cannot read the session.
             ClearCookie(context, LegacyTokenCookieName);
             context.Response.Headers.TryAdd("SetAuthToken", "true");
@@ -46,6 +50,7 @@ namespace SRT.Core.GeneralFunctions
             ClearCookie(context, SessionCookieName);
             ClearCookie(context, LegacyTokenCookieName);
             ClearCookie(context, LegacyRoleCookieName);
+            ClearCookie(context, RememberCookieName);
             context.Response.Headers.TryAdd("SetAuthToken", "true");
         }
 
@@ -109,14 +114,14 @@ namespace SRT.Core.GeneralFunctions
             string value,
             bool httpOnly,
             TimeSpan maxAge,
-            string? domain = null)
+            string? domain = null, bool persistent = true)
         {
             var _systemEnv = context.RequestServices.GetRequiredService<ISystemENV>();
             var secureInProd =
                 _systemEnv.environment is
                     SystemENV.EnvironmentType.Production or
                     SystemENV.EnvironmentType.ProductionIIS
-                || context.Request.IsHttps;
+                || context.Request.IsHttps || context.RequestServices.GetService<Microsoft.Extensions.Hosting.IHostEnvironment>()?.EnvironmentName == "Preview";
 
             var options = new CookieOptions
             {
@@ -124,8 +129,8 @@ namespace SRT.Core.GeneralFunctions
                 Secure = secureInProd,
                 SameSite = SameSiteMode.Lax,
                 Path = "/",
-                MaxAge = value.SRT_String_IsNullOrEmpty() ? TimeSpan.FromSeconds(0) : maxAge,
-                Expires = DateTimeOffset.UtcNow.Add(value.SRT_String_IsNullOrEmpty() ? TimeSpan.FromDays(-2) : maxAge),
+                MaxAge = value.SRT_String_IsNullOrEmpty() ? TimeSpan.FromSeconds(0) : persistent ? maxAge : null,
+                Expires = value.SRT_String_IsNullOrEmpty() ? DateTimeOffset.UtcNow.AddDays(-2) : persistent ? DateTimeOffset.UtcNow.Add(maxAge) : null,
             };
 
             // New sessions are host-only (no Domain). Parent Domain is only used when

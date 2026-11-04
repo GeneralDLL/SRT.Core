@@ -21,9 +21,5 @@ namespace SRT.Core.Interfaces
 
         // اجبار تغییر رمز: فقط GetInfo / ChangePassword / logout مجاز است
         bool IsForceChangePassword(ActionExecutingContext context);
-        //        && context.HttpContext.Items["UserData"] is UserInfo lockedUser
-        //&& lockedUser.mustChangePassword
-        //&& IsForcedPasswordChangeRole(lockedUser.userRole)
-        //&& !IsAllowedDuringForcedPasswordChange(context.HttpContext.Request))
     }
 }

@@ -85,10 +85,10 @@ namespace SRT.Core.GeneralFunctions
 
         public static string ReadToken(
             HttpContext context,
-            SystemEnums.TypeAuthenticationController ControllerType,
+            bool isInternal = false,
             bool justFromCookie = false)
         {
-            if (ControllerType == SystemEnums.TypeAuthenticationController.Internal)
+            if (isInternal)
             {
                 if (context.Request.Headers.TryGetValue("Authorization", out var headerValue))
                 {

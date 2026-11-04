@@ -1,4 +1,4 @@
-﻿// Ignore Spelling: SYS
+// Ignore Spelling: SYS
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +10,6 @@ using SRT.Core.Domain.RequestsDomqins;
 using SRT.Core.Domain.RequestsDomqins.HttpClientServices;
 using SRT.Core.Interfaces;
 using SRT.Core.SRTExtensions;
-using SRT.Core.SystemEnums;
 using System.ComponentModel;
 using System.Net;
 using SRT.Core.Diagnostics;
@@ -26,16 +25,24 @@ namespace SRT.Core.Authentication
         private string? baseToken { get; }
         private bool allowNotAuthenticated { get; }
         private string? requiredAccess { get; }
-        private TypeAuthenticationController ControllerType { get; }
+        private string? userType { get; }
+        private bool isInternal { get; }
 
         #region Constructors
         public CheckAuthMiddleWareAttribute(
-            TypeAuthenticationController authType,
+            string? userType = null,
             bool allowNotAuthenticated = false,
             string? baseToken = null,
-            string? requiredAccess = null)
+            string? requiredAccess = null,
+            bool isInternal = false)
         {
-            ControllerType = authType;
+            if (userType is not null && string.IsNullOrWhiteSpace(userType))
+                throw new ArgumentException("A user type cannot be empty.", nameof(userType));
+            if (isInternal && userType is not null)
+                throw new ArgumentException("Internal authentication cannot require a user type.", nameof(userType));
+
+            this.userType = userType;
+            this.isInternal = isInternal;
             this.allowNotAuthenticated = allowNotAuthenticated;
             this.baseToken = baseToken;
             this.requiredAccess = requiredAccess;
@@ -92,29 +99,14 @@ namespace SRT.Core.Authentication
             IAuthClient authService,
             string? token)
         {
-            switch (ControllerType)
+            if (isInternal)
             {
-                // `None` = any authenticated panel/user role (e.g. shared User/General).
-                // Still validates the session cookie and injects UserData — it only skips
-                // the role-equality check that Admin/Referee/Client endpoints enforce.
-                case TypeAuthenticationController.None:
-                case TypeAuthenticationController.Admin:
-                case TypeAuthenticationController.RefereeAdmin:
-                case TypeAuthenticationController.Referee:
-                case TypeAuthenticationController.Client:
-                case TypeAuthenticationController.Mci:
-                case TypeAuthenticationController.DevOps:
-                    await HandleUserAuth(context, authService, token);
-                    return;
-
-                case TypeAuthenticationController.Internal:
-                    var serviceTokens = context.HttpContext.RequestServices.GetRequiredService<ServiceTokenMiddleWare>();
-                    await serviceTokens.InvokeAsync(context, token, baseToken);
-                    return;
-
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(ControllerType), ControllerType, null);
+                var serviceTokens = context.HttpContext.RequestServices.GetRequiredService<ServiceTokenMiddleWare>();
+                await serviceTokens.InvokeAsync(context, token, baseToken);
+                return;
             }
+
+            await HandleUserAuth(context, authService, token);
         }
 
         private async Task HandleUserAuth(ActionExecutingContext context, IAuthClient authService, string? token)
@@ -153,14 +145,14 @@ namespace SRT.Core.Authentication
 
             try
             {
-                var token = GeneralFunctions.SSO.ReadToken(httpContext, ControllerType, justFromCookie: true);
+                var token = GeneralFunctions.SSO.ReadToken(httpContext, isInternal, justFromCookie: true);
 
                 return token;
             }
             catch
             {
                 // fall back with minimal token
-                var token = GeneralFunctions.SSO.ReadToken(httpContext, ControllerType, justFromCookie: true);
+                var token = GeneralFunctions.SSO.ReadToken(httpContext, isInternal, justFromCookie: true);
                 return token;
             }
         }
@@ -200,8 +192,8 @@ namespace SRT.Core.Authentication
             // Superadmin skips role and dashboard checks. Token validation already succeeded.
             if (!allowNotAuthenticated
                 && !dmUser.isSuperAdmin
-                && ControllerType != TypeAuthenticationController.None
-                && !RoleMatchesController(dmUser.userRole, ControllerType))
+                && userType is not null
+                && !string.Equals(dmUser.userType, userType, StringComparison.Ordinal))
                 return InvalidRoleDataMessage;
 
             if (!dmUser.isSuperAdmin && !string.IsNullOrWhiteSpace(requiredAccess))
@@ -228,21 +220,6 @@ namespace SRT.Core.Authentication
             return null; // success
         }
 
-        private static bool RoleMatchesController(
-            UserRoleType userRole,
-            TypeAuthenticationController controllerType)
-        {
-            return controllerType switch
-            {
-                TypeAuthenticationController.Admin => userRole == UserRoleType.Admin,
-                TypeAuthenticationController.RefereeAdmin => userRole == UserRoleType.RefereeAdmin,
-                TypeAuthenticationController.Referee => userRole == UserRoleType.Referee,
-                TypeAuthenticationController.Client => userRole == UserRoleType.Client,
-                TypeAuthenticationController.Mci => userRole == UserRoleType.Mci,
-                TypeAuthenticationController.DevOps => userRole == UserRoleType.DevOps,
-                _ => false,
-            };
-        }
         #endregion
 
         #region Exception Handler
@@ -336,11 +313,6 @@ namespace SRT.Core.Authentication
             };
         }
         #endregion
-
-        private static bool IsForcedPasswordChangeRole(UserRoleType role)
-            => role == UserRoleType.Admin
-                || role == UserRoleType.RefereeAdmin
-                || role == UserRoleType.Referee;
 
         private static bool IsAllowedDuringForcedPasswordChange(HttpRequest request)
         {

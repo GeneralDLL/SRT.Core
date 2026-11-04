@@ -47,7 +47,7 @@ namespace SRT.Core.Domain.Diagnostics
                     RouteTemplate = route,
                     StatusCode = statusCode,
                     UserId = user?.id,
-                    UserType = user?.userRole.ToString(),
+                    UserType = user?.userType,
                     ActiveRole = context.Items[DashboardAccess.ActiveRoleItemKey] as string,
                     ClientIp = ClientIp(context),
                     UserAgent = NullIfEmpty(request.Headers.UserAgent.ToString()),

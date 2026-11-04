@@ -123,7 +123,18 @@ Slots: `DefaultConnection`, `DefaultConnection2`, `SRTCore_CacheRedis`, `SRTCore
 
 `HttpDiagnosticEnvelope.Create(HttpContext, statusCode)` (`SRT.Core.Domain.Diagnostics`) builds the Http envelope that `SaveLogError` and `CheckAuthMiddleWareAttribute` store. Detail holds method, path, query string, route, status, user id, role, active role, client IP, user agent, referer, flow trace id and request headers. `Authorization`, `Cookie`, `Proxy-Authorization` and `X-Api-Key` are dropped. The request body is never stored.
 
-`TypeAuthenticationController.DevOps` matches `UserRoleType.DevOps`.
+`IUserInfo.userType` is the host's account-type key. Core does not define account-type enums. A host can keep its own typed property and explicitly implement the interface with that enum's name.
+
+```csharp
+public CheckAuthMiddleWareAttribute(
+    string? userType = null,
+    bool allowNotAuthenticated = false,
+    string? baseToken = null,
+    string? requiredAccess = null,
+    bool isInternal = false)
+```
+
+Use `[CheckAuthMiddleWare(nameof(UserType.Admin))]` when `UserType` is the host's enum. `[CheckAuthMiddleWare]` accepts any authenticated account type. `[CheckAuthMiddleWare(isInternal: true)]` validates the internal Bearer token instead of a user cookie. An empty type key or a key combined with `isInternal` is rejected. `SSO.ReadToken(HttpContext, bool isInternal = false, bool justFromCookie = false)` uses the same split.
 
 `IDataBase`: `Provider` (`SqlServer` \| `PostgreSql`), `BaseConfiguration`, `InsertBaseData`, `ApplyStartupDataMaintenanceAsync`.
 
@@ -160,7 +171,7 @@ Headers (read in `OnActionExecuting`; invalid values log a warning and keep defa
 
 User: `GetUserInfo()` / `dmUser` / `dmAdmin` return `IUserInfo?` from `HttpContext.Items["UserData"]` (same key as `CheckAuthMiddleWareAttribute`). Missing user is `null`, not 500.
 
-`IUserInfo` exposes `isSuperAdmin` and `roleGrants`. Each `UserRoleGrant` has `code` and that role's `accesses`. Missing or null JSON for those members means `false` and an empty list. An old token whose `roles` value is a string array is read as grants with empty `accesses`; a flat `accesses` list is ignored. `CheckAuthMiddleWareAttribute` takes optional `requiredAccess`. After a valid token, a superadmin skips the controller role check and the active-role check. Other users still match `UserRoleType`. When `requiredAccess` is set, the request must send exactly one `X-Active-Role` header. That code is compared with `StringComparer.Ordinal` to `roleGrants`, and the key must be in that role only. Empty, repeated, or comma-joined header values are HTTP 403 `ACTIVE_ROLE_REQUIRED`. An unknown code is `ACTIVE_ROLE_UNKNOWN`. A missing key is `FORBIDDEN_ACCESS`. The accepted code is stored only in `HttpContext.Items["ActiveRole"]` for that request. An invalid token stays HTTP 401. Empty `requiredAccess` does not read the header. `X-Role-Identity` remains a GUID and is not this check.
+`IUserInfo` exposes `userType`, `isSuperAdmin` and `roleGrants`. Each `UserRoleGrant` has `code` and that role's `accesses`. Missing or null JSON for the access members means `false` and an empty list. An old token whose `roles` value is a string array is read as grants with empty `accesses`; a flat `accesses` list is ignored. `CheckAuthMiddleWareAttribute` takes optional `requiredAccess`. After a valid token, a superadmin skips the account-type check and the active-role check. Other users must match the requested type key with `StringComparison.Ordinal`; a mismatch is HTTP 403 `FORBIDDEN_ROLE`. When `requiredAccess` is set, the request must send exactly one `X-Active-Role` header. That code is compared with `StringComparer.Ordinal` to `roleGrants`, and the key must be in that role only. Empty, repeated, or comma-joined header values are HTTP 403 `ACTIVE_ROLE_REQUIRED`. An unknown code is `ACTIVE_ROLE_UNKNOWN`. A missing key is `FORBIDDEN_ACCESS`. The accepted code is stored only in `HttpContext.Items["ActiveRole"]` for that request. An invalid token stays HTTP 401. Empty `requiredAccess` does not read the header. `X-Role-Identity` remains a GUID and is not this check.
 
 Envelope type: `SRT.Core.Domain.RequestsDomqins.ResponseData` (`status`, `data`, `message`, `errorCode`, `redirectURL`). Host JSON formatter is System.Text.Json (`AddJsonOptions`). Do not stringify the whole payload.
 
@@ -191,3 +202,5 @@ HTTP status on the result equals `status`. Helper map:
 `Response_GenerateResult(ResponseData data)` switches on `data.status` for the rows above. Unknown status → `InvalidOperationException`. File/stream results are not wrapped.
 
 Automatic 400 (before the action): `InvalidModelStateResponseFactory` returns `CreateApiResponse(BadRequest, ...)`.
+Account-type keys come from the host's validated session data. A PlayToEarn Player endpoint uses `nameof(UserType.Player)`; the numeric `UserType` values in JSON, JWTs and storage are unchanged. Rebuild all consumers with this Core version; the removed enum APIs are source and binary incompatible with older builds.
+SetSession(HttpContext,string,bool persistent) permits explicit browser-session cookies. The existing two-argument overload honors the HttpOnly AuthRemember marker during token rotation; ClearSession clears that marker. Preview cookies are Secure.
