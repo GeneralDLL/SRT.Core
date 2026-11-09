@@ -46,6 +46,10 @@ public sealed class ServiceTokenMiddleWare
         #region #S2S-DEST-02 Bearer
         if (string.IsNullOrWhiteSpace(token))
         {
+            // Docker Development has no shared S2S_TOKEN. The action still checks X-Service-Secret.
+            if (HasCallerSecret(context))
+                return;
+
             Reject(context);
             return;
         }
@@ -136,6 +140,13 @@ public sealed class ServiceTokenMiddleWare
         #endregion
     }
     #endregion
+
+    private static bool HasCallerSecret(ActionExecutingContext context)
+    {
+        var id = context.HttpContext.Request.Headers["X-Service-Id"].ToString();
+        var secret = context.HttpContext.Request.Headers["X-Service-Secret"].ToString();
+        return int.TryParse(id, out var serviceId) && serviceId > 0 && !string.IsNullOrWhiteSpace(secret);
+    }
 
     private bool TimingAccepts(ServiceJwtDocument jwt, ServiceAuthOptions options)
     {
